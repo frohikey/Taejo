@@ -87,8 +87,7 @@ public class ServiceBusController {
                 }
             }
         } catch (ServiceException | IOException e) {
-            System.out.println("Exception encountered:");
-            System.out.println(e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -132,9 +131,7 @@ public class ServiceBusController {
             ServiceBusContract service = ServiceBusService.create(configurationSend);
             service.sendQueueMessage(sendEntityPath, message);
         } catch (ServiceException | IOException e) {
-            System.out.print("Exception encountered: ");
-            System.out.println(e.getMessage());
-            System.exit(-1);
+            e.printStackTrace();
         }
     }
 
