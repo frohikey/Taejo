@@ -6,7 +6,6 @@ import co.orbu.taejo.azure.model.IncomingMessage;
 import co.orbu.taejo.azure.model.OutgoingMessage;
 import co.orbu.taejo.integration.module.CommandExecutor;
 import co.orbu.taejo.integration.module.CommandExecutorFactory;
-import com.microsoft.windowsazure.Configuration;
 import com.microsoft.windowsazure.exception.ServiceException;
 import com.microsoft.windowsazure.services.servicebus.ServiceBusConfiguration;
 import com.microsoft.windowsazure.services.servicebus.ServiceBusContract;
@@ -18,10 +17,10 @@ import com.microsoft.windowsazure.services.servicebus.models.ReceiveQueueMessage
 import org.codehaus.jackson.map.ObjectMapper;
 import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 
 import javax.annotation.Nullable;
-import javax.annotation.PostConstruct;
 import javax.inject.Inject;
 import java.io.IOException;
 
@@ -35,56 +34,61 @@ public class ServiceBusController {
     private final CommandExecutorFactory commandExecutorFactory;
     private final ListableBeanFactory beanFactory;
 
+    private final String initCommand;
     private final String receiveEntityPath;
     private final String sendEntityPath;
-    private final Configuration configurationReceive;
-    private final Configuration configurationSend;
+
+    private final ReceiveMessageOptions receiveMessageOptions;
+    private final ServiceBusContract serviceReceive;
+
+    private final ServiceBusContract serviceSend;
 
     @Inject
     public ServiceBusController(AzureConfig azureConfig, CommandExecutorFactory commandExecutorFactory, ListableBeanFactory beanFactory) {
         this.commandExecutorFactory = commandExecutorFactory;
         this.beanFactory = beanFactory;
 
+        // receive
+
         AzureConfigDetail receive = azureConfig.getReceive();
+
         receiveEntityPath = receive.getEntityPath();
-        configurationReceive = ServiceBusConfiguration.configureWithSASAuthentication(receive.getNamespace(), receive.getSasKeyName(),
-                receive.getSasKey(), receive.getServiceBusRootUri());
+        initCommand = "!" + receiveEntityPath + " ";
+
+        receiveMessageOptions = ReceiveMessageOptions.DEFAULT;
+        receiveMessageOptions.setReceiveMode(ReceiveMode.PEEK_LOCK);
+
+        serviceReceive = ServiceBusService.create(ServiceBusConfiguration.configureWithSASAuthentication(receive.getNamespace(), receive.getSasKeyName(),
+                receive.getSasKey(), receive.getServiceBusRootUri()));
+
+        // send
 
         AzureConfigDetail send = azureConfig.getSend();
         sendEntityPath = send.getEntityPath();
-        configurationSend = ServiceBusConfiguration.configureWithSASAuthentication(send.getNamespace(), send.getSasKeyName(),
-                send.getSasKey(), send.getServiceBusRootUri());
+        serviceSend = ServiceBusService.create(ServiceBusConfiguration.configureWithSASAuthentication(send.getNamespace(), send.getSasKeyName(),
+                send.getSasKey(), send.getServiceBusRootUri()));
     }
 
-    @PostConstruct
+    @Scheduled(initialDelay = 1_000, fixedDelay = 1_000)
     private void startReceivingMessages() {
         try {
-            ReceiveMessageOptions opts = ReceiveMessageOptions.DEFAULT;
-            opts.setReceiveMode(ReceiveMode.PEEK_LOCK);
+            ReceiveQueueMessageResult messageResult = serviceReceive.receiveQueueMessage(receiveEntityPath, receiveMessageOptions);
 
-            ServiceBusContract service = ServiceBusService.create(configurationReceive);
+            BrokeredMessage message = messageResult.getValue();
+            if (message != null && message.getMessageId() != null) {
+                System.out.println("MessageID: " + message.getMessageId());
+                System.out.println("Date: " + message.getDate());
 
-            String initCommand = "!" + receiveEntityPath + " ";
+                ObjectMapper mapper = new ObjectMapper();
+                IncomingMessage incomingMessage = mapper.readValue(message.getBody(), IncomingMessage.class);
 
-            while (true) {
-                ReceiveQueueMessageResult messageResult = service.receiveQueueMessage(receiveEntityPath, opts);
-
-                BrokeredMessage message = messageResult.getValue();
-                if (message != null && message.getMessageId() != null) {
-                    System.out.println("MessageID: " + message.getMessageId());
-                    System.out.println("Date: " + message.getDate());
-
-                    ObjectMapper mapper = new ObjectMapper();
-                    IncomingMessage incomingMessage = mapper.readValue(message.getBody(), IncomingMessage.class);
-
-                    String[] params = incomingMessage.getCommand().replace(initCommand, "").split(" ");
-                    String result = executeCommand(params);
-                    if (result != null) {
-                        sendMessage(result);
-                    }
-
-                    service.deleteMessage(message);
+                String[] params = incomingMessage.getCommand().replace(initCommand, "").split(" ");
+                String result = executeCommand(params);
+                if (result != null) {
+                    sendMessage(result);
                 }
+
+                serviceReceive.deleteMessage(message);
             }
         } catch (ServiceException | IOException e) {
             e.printStackTrace();
@@ -128,8 +132,7 @@ public class ServiceBusController {
             message.setContentType("application/json");
             message.setLabel(sendEntityPath);
 
-            ServiceBusContract service = ServiceBusService.create(configurationSend);
-            service.sendQueueMessage(sendEntityPath, message);
+            serviceSend.sendQueueMessage(sendEntityPath, message);
         } catch (ServiceException | IOException e) {
             e.printStackTrace();
         }
