@@ -114,7 +114,7 @@ public class ServiceBusController {
         return commandExecutor.doCommand(params);
     }
 
-    private void sendMessage(String msg) {
+    public void sendMessage(String msg) {
         OutgoingMessage outgoingMessage = new OutgoingMessage();
         outgoingMessage.setMessage(msg);
 
