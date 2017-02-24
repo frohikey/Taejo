@@ -51,28 +51,24 @@ public class HotsVersionCheckExecutorImpl extends AbstractVersionCheckExecutor {
             version.setCommand(COMMAND);
         }
 
-        if (channel.getName() != null && channel.getName().equals(version.getName())) {
-            // this video is already in the database
+        // TODO: there needs to be a way how to customize this (not suited for all cases, e.g. YouTube video does not have a version)
+        Video video = channel.getVideos().size() > 0 ? channel.getVideos().get(0) : null;
+        if (video == null || video.getTitle() == null || video.getTitle().equals(version.getVersion())) {
+            // this version is already in the database
             return;
         }
 
+        System.out.println("Found new video: " + video.getTitle());
+
         version.setName(channel.getName());
-
-        // TODO: there needs to be a way how to customize this (not suited for all cases, e.g. YouTube video does not have a version)
-        if (channel.getVideos().size() > 0) {
-            Video video = channel.getVideos().get(0);
-            System.out.println("Found new video: " + video.getTitle());
-
-            version.setVersion(video.getTitle());
-            version.setDownloadUrl(video.getLink().getUrl());
-
-            // TODO: yikes
-            version.setReleaseNotesUrl("http://www.youtube.com/channel/" + CHANNEL_NAME);
-        }
-
+        version.setVersion(video.getTitle());
+        version.setDownloadUrl(video.getLink().getUrl());
         version.setLastUpdate(new Date());
 
-        // do not report if there is no entry in the database at all (this prevents spamming the channel on init)
+        // TODO: yikes
+        version.setReleaseNotesUrl("http://www.youtube.com/channel/" + CHANNEL_NAME);
+
+        // do not report if there is no entry in the database at all (this prevents spamming on init)
         version.setWasReported(version.getId() == null);
 
         versionRepository.saveAndFlush(version);
