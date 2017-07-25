@@ -9,7 +9,7 @@ public interface VersionCheckExecutor {
     /**
      * Gets info about the latest released version.
      *
-     * @return Detail about latest release or {@code null} if not detail could be found.
+     * @return Detail about latest release or {@code null} if no detail could be found.
      */
     @Nullable
     VersionInfo getLatestVersion();
