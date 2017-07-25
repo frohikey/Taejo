@@ -1,7 +1,7 @@
 package co.orbu.taejo.azure.model;
 
 /**
- * Message that will be send to service bus.
+ * Message that will be sent to service bus.
  */
 public class OutgoingMessage {
 
